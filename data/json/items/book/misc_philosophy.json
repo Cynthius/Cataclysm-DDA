@@ -156,7 +156,7 @@
     "id": "book_nonf_hard_phil_mdlogic",
     "type": "BOOK",
     "name": { "str": "Modal Logic as Metaphysics", "str_pl": "copies of Modal Logic" },
-    "description": "A treatise on applying logical tools to questions about that nature of reality, this book contains detailed discussion of metaphysical issues.",
+    "description": "A treatise on applying logical tools to questions about the nature of reality, this book contains detailed discussion of metaphysical issues.",
     "//isbn13": 9780199552078,
     "weight": "834 g",
     "volume": "1249 ml",

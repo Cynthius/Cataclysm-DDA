@@ -588,7 +588,7 @@
     "type": "BOOK",
     "name": { "str": "war novel" },
     "copy-from": "novel_war",
-    "description": "A story about a Bosnian citizen who goes through many hardships and near death during the breakup of Yugoslavia.",
+    "description": "A story about a Bosnian citizen who goes through many hardships and near death experiences during the breakup of Yugoslavia.",
     "time": "16 m",
     "relative": { "chapters": -4 }
   },
