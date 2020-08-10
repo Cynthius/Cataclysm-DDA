@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdlib>
+#include <cmath>
 
 #include "assign.h"
 #include "calendar.h"
@@ -13,6 +14,7 @@
 #include "generic_factory.h"
 #include "map.h"
 #include "output.h"
+#include "point.h"
 #include "string_id.h"
 
 static constexpr int SCENT_RADIUS = 40;
@@ -146,8 +148,8 @@ bool scent_map::inbounds( const point &p ) const
     static constexpr point scent_map_boundary_min{};
     static constexpr point scent_map_boundary_max( MAPSIZE_X, MAPSIZE_Y );
 
-    static constexpr half_open_rectangle scent_map_boundaries( scent_map_boundary_min,
-            scent_map_boundary_max );
+    static constexpr half_open_rectangle<point> scent_map_boundaries(
+        scent_map_boundary_min, scent_map_boundary_max );
 
     return scent_map_boundaries.contains( p );
 }

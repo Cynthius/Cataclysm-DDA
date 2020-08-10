@@ -1,26 +1,38 @@
 #include "activity_actor.h"
 
+#include <array>
+#include <cmath>
+#include <functional>
 #include <list>
 #include <utility>
 
+#include "action.h"
 #include "activity_handlers.h" // put_into_vehicle_or_drop and drop_on_map
 #include "advanced_inv.h"
 #include "avatar.h"
 #include "avatar_action.h"
+#include "bodypart.h"
 #include "character.h"
-#include "computer_session.h"
 #include "debug.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
+#include "flat_set.h"
 #include "game.h"
 #include "gates.h"
+#include "gun_mode.h"
 #include "iexamine.h"
+#include "int_id.h"
 #include "item.h"
+#include "item_contents.h"
 #include "item_group.h"
 #include "item_location.h"
+#include "itype.h"
 #include "json.h"
 #include "line.h"
 #include "map.h"
 #include "map_iterator.h"
+#include "mapdata.h"
 #include "morale_types.h"
 #include "npc.h"
 #include "options.h"
@@ -30,8 +42,14 @@
 #include "player_activity.h"
 #include "point.h"
 #include "ranged.h"
+#include "ret_val.h"
+#include "rng.h"
+#include "sounds.h"
 #include "timed_event.h"
+#include "translations.h"
+#include "ui.h"
 #include "uistate.h"
+#include "value_ptr.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 
@@ -727,21 +745,20 @@ void move_items_activity_actor::do_turn( player_activity &act, Character &who )
             continue;
         }
 
-        // Don't need to make a copy here since movement can't be canceled
-        item &leftovers = *target;
-        // Make a copy to be put in the destination location
-        item newit = leftovers;
-
-        // Handle charges, quantity == 0 means move all
-        if( quantity != 0 && newit.count_by_charges() ) {
-            newit.charges = std::min( newit.charges, quantity );
-            leftovers.charges -= quantity;
-        } else {
-            leftovers.charges = 0;
-        }
-
         // Check that we can pick it up.
-        if( !newit.made_of_from_type( phase_id::LIQUID ) ) {
+        if( !target->made_of_from_type( phase_id::LIQUID ) ) {
+            // Don't need to make a copy here since movement can't be canceled
+            item &leftovers = *target;
+            // Make a copy to be put in the destination location
+            item newit = leftovers;
+            // Handle charges, quantity == 0 means move all
+            if( quantity != 0 && newit.count_by_charges() ) {
+                newit.charges = std::min( newit.charges, quantity );
+                leftovers.charges -= quantity;
+            } else {
+                leftovers.charges = 0;
+            }
+
             // This is for hauling across zlevels, remove when going up and down stairs
             // is no longer teleportation
             if( newit.is_owned_by( who, true ) ) {
@@ -1102,6 +1119,7 @@ void consume_activity_actor::start( player_activity &act, Character &guy )
         if( !ret.success() ) {
             canceled = true;
             consume_menu_selections = std::vector<int>();
+            consume_menu_selected_items.clear();
             consume_menu_filter = std::string();
             return;
         }
@@ -1111,6 +1129,7 @@ void consume_activity_actor::start( player_activity &act, Character &guy )
         if( !ret.success() ) {
             canceled = true;
             consume_menu_selections = std::vector<int>();
+            consume_menu_selected_items.clear();
             consume_menu_filter = std::string();
             return;
         }
@@ -1147,18 +1166,21 @@ void consume_activity_actor::finish( player_activity &act, Character & )
     }
     //setting act to null clears these so back them up
     std::vector<int> temp_selections = consume_menu_selections;
+    const std::vector<item_location> temp_selected_items = consume_menu_selected_items;
     const std::string temp_filter = consume_menu_filter;
     if( act.id() == activity_id( "ACT_CONSUME" ) ) {
         act.set_to_null();
     }
-    if( !temp_selections.empty() || !temp_filter.empty() ) {
+    if( !temp_selections.empty() || !temp_selected_items.empty() || !temp_filter.empty() ) {
         if( act.is_null() ) {
             player_character.assign_activity( ACT_EAT_MENU );
             player_character.activity.values = temp_selections;
+            player_character.activity.targets = temp_selected_items;
             player_character.activity.str_values = { temp_filter };
         } else {
             player_activity eat_menu( ACT_EAT_MENU );
             eat_menu.values = temp_selections;
+            eat_menu.targets = temp_selected_items;
             eat_menu.str_values = { temp_filter };
             player_character.backlog.push_back( eat_menu );
         }
@@ -1172,6 +1194,7 @@ void consume_activity_actor::serialize( JsonOut &jsout ) const
     jsout.member( "consume_location", consume_location );
     jsout.member( "consume_item", consume_item );
     jsout.member( "consume_menu_selections", consume_menu_selections );
+    jsout.member( "consume_menu_selected_items", consume_menu_selected_items );
     jsout.member( "consume_menu_filter", consume_menu_filter );
     jsout.member( "canceled", canceled );
 
@@ -1188,6 +1211,7 @@ std::unique_ptr<activity_actor> consume_activity_actor::deserialize( JsonIn &jsi
     data.read( "consume_location", actor.consume_location );
     data.read( "consume_item", actor.consume_item );
     data.read( "consume_menu_selections", actor.consume_menu_selections );
+    data.read( "consume_menu_selected_items", actor.consume_menu_selected_items );
     data.read( "consume_menu_filter", actor.consume_menu_filter );
     data.read( "canceled", actor.canceled );
 
@@ -1545,7 +1569,6 @@ bool workout_activity_actor::query_keep_training( player_activity &act, Characte
             act.moves_total = to_moves<int>( length * 1_minutes );
             act.moves_left = act.moves_total;
             return true;
-            break;
     }
 }
 

@@ -11,7 +11,6 @@
 #include "enum_conversions.h"
 #include "generic_factory.h"
 #include "json.h"
-#include "pldata.h"
 #include "type_id.h"
 
 static const anatomy_id anatomy_human_anatomy( "human_anatomy" );
@@ -60,28 +59,6 @@ namespace
 generic_factory<body_part_type> body_part_factory( "body part" );
 
 } // namespace
-
-bool is_legacy_bodypart_id( const std::string &id )
-{
-    static const std::vector<std::string> legacy_body_parts = {
-        "TORSO",
-        "HEAD",
-        "EYES",
-        "MOUTH",
-        "ARM_L",
-        "ARM_R",
-        "HAND_L",
-        "HAND_R",
-        "LEG_L",
-        "LEG_R",
-        "FOOT_L",
-        "FOOT_R",
-        "NUM_BP",
-    };
-
-    return std::find( legacy_body_parts.begin(), legacy_body_parts.end(),
-                      id ) != legacy_body_parts.end();
-}
 
 static body_part legacy_id_to_enum( const std::string &legacy_id )
 {
@@ -175,7 +152,7 @@ const bodypart_str_id &convert_bp( body_part bp )
         bodypart_str_id( "leg_r" ),
         bodypart_str_id( "foot_l" ),
         bodypart_str_id( "foot_r" ),
-        bodypart_str_id( "num_bp" ),
+        bodypart_str_id( "bp_null" ),
     };
     if( bp > num_bp || bp < bp_torso ) {
         debugmsg( "Invalid body part token %d", bp );
@@ -351,7 +328,7 @@ std::string get_body_part_id( body_part bp )
 
 body_part_set body_part_set::unify_set( const body_part_set &rhs )
 {
-    for( const  bodypart_str_id &i : rhs ) {
+    for( const bodypart_str_id &i : rhs ) {
         if( !test( i ) ) {
             set( i );
         }
@@ -362,7 +339,7 @@ body_part_set body_part_set::unify_set( const body_part_set &rhs )
 body_part_set body_part_set::intersect_set( const body_part_set &rhs )
 {
     body_part_set temp;
-    for( const  bodypart_str_id &j : rhs ) {
+    for( const bodypart_str_id &j : rhs ) {
         if( test( j ) ) {
             temp.set( j );
         }
@@ -374,7 +351,7 @@ body_part_set body_part_set::intersect_set( const body_part_set &rhs )
 
 body_part_set body_part_set::substract_set( const body_part_set &rhs )
 {
-    for( const  bodypart_str_id &j : rhs ) {
+    for( const bodypart_str_id &j : rhs ) {
         if( test( j ) ) {
             reset( j );
         }
@@ -441,7 +418,7 @@ int bodypart::get_damage_disinfected() const
     return damage_disinfected;
 }
 
-encumbrance_data bodypart::get_encumbrance_data() const
+const encumbrance_data &bodypart::get_encumbrance_data() const
 {
     return encumb_data;
 }
@@ -496,7 +473,7 @@ void bodypart::set_damage_disinfected( int set )
     damage_disinfected = set;
 }
 
-void bodypart::set_encumbrance_data( encumbrance_data set )
+void bodypart::set_encumbrance_data( const encumbrance_data &set )
 {
     encumb_data = set;
 }

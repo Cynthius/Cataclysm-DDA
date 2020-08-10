@@ -1,24 +1,34 @@
 #include "item_contents.h"
 
 #include <algorithm>
+#include <iterator>
+#include <map>
 #include <memory>
 #include <type_traits>
 
-#include "avatar.h"
 #include "character.h"
+#include "color.h"
+#include "cursesdef.h"
+#include "debug.h"
 #include "enums.h"
+#include "flat_set.h"
+#include "input.h"
+#include "inventory.h"
 #include "item.h"
 #include "item_category.h"
-#include "item_factory.h"
+#include "item_location.h"
+#include "item_pocket.h"
 #include "iteminfo_query.h"
 #include "itype.h"
-#include "item_pocket.h"
 #include "map.h"
 #include "output.h"
+#include "point.h"
+#include "string_formatter.h"
+#include "string_id.h"
 #include "string_input_popup.h"
+#include "translations.h"
+#include "ui.h"
 #include "units.h"
-
-struct tripoint;
 
 static const std::vector<item_pocket::pocket_type> avail_types{
     item_pocket::pocket_type::CONTAINER,
@@ -129,14 +139,6 @@ bool pocket_favorite_callback::key( const input_context &, const input_event &ev
     const std::string whitelist_string = whitelist ? _( "whitelist" ) : _( "blacklist" );
     const bool item_id = input == 'i';
     const bool cat_id = input == 'c';
-    std::string id_string;
-
-    if( item_id ) {
-        id_string = _( "item id" );
-    } else if( cat_id ) {
-        id_string = _( "item category" );
-    }
-
     uilist selector_menu;
 
     if( item_id ) {
@@ -717,11 +719,11 @@ bool item_contents::will_spill() const
     return false;
 }
 
-bool item_contents::spill_open_pockets( Character &guy )
+bool item_contents::spill_open_pockets( Character &guy, const item *avoid )
 {
     for( item_pocket &pocket : contents ) {
         if( pocket.is_type( item_pocket::pocket_type::CONTAINER ) && pocket.will_spill() ) {
-            pocket.handle_liquid_or_spill( guy );
+            pocket.handle_liquid_or_spill( guy, avoid );
             if( !pocket.empty() ) {
                 return false;
             }
@@ -730,11 +732,11 @@ bool item_contents::spill_open_pockets( Character &guy )
     return true;
 }
 
-void item_contents::handle_liquid_or_spill( Character &guy )
+void item_contents::handle_liquid_or_spill( Character &guy, const item *const avoid )
 {
     for( item_pocket &pocket : contents ) {
         if( pocket.is_type( item_pocket::pocket_type::CONTAINER ) ) {
-            pocket.handle_liquid_or_spill( guy );
+            pocket.handle_liquid_or_spill( guy, avoid );
         }
     }
 }
@@ -783,10 +785,27 @@ bool item_contents::seal_all_pockets()
     return any_sealed;
 }
 
-void item_contents::migrate_item( item &obj, const std::set<itype_id> &migrations )
+item_contents::sealed_summary item_contents::get_sealed_summary() const
 {
-    for( item_pocket &pocket : contents ) {
-        pocket.migrate_item( obj, migrations );
+    bool any_sealed = false;
+    bool any_unsealed = false;
+    for( const item_pocket &pocket : contents ) {
+        if( pocket.is_type( item_pocket::pocket_type::CONTAINER ) ) {
+            if( pocket.sealed() ) {
+                any_sealed = true;
+            } else {
+                any_unsealed = true;
+            }
+        }
+    }
+    if( any_sealed ) {
+        if( any_unsealed ) {
+            return sealed_summary::part_sealed;
+        } else {
+            return sealed_summary::all_sealed;
+        }
+    } else {
+        return sealed_summary::unsealed;
     }
 }
 
@@ -1309,19 +1328,6 @@ bool item_contents::all_pockets_rigid() const
         }
     }
     return true;
-}
-
-bool item_contents::contents_are_rigid() const
-{
-    for( const item_pocket &pocket : contents ) {
-        if( !pocket.is_type( item_pocket::pocket_type::CONTAINER ) ) {
-            continue;
-        }
-        if( !pocket.rigid() ) {
-            return false;
-        }
-    }
-    return false;
 }
 
 units::volume item_contents::item_size_modifier() const

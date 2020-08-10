@@ -1,5 +1,4 @@
 #include "lightmap.h" // IWYU pragma: associated
-#include "shadowcasting.h" // IWYU pragma: associated
 
 #include <cmath>
 #include <cstdlib>
@@ -11,6 +10,8 @@
 #include "calendar.h"
 #include "character.h"
 #include "colony.h"
+#include "cuboid_rectangle.h"
+#include "debug.h"
 #include "field.h"
 #include "fragment_cloud.h" // IWYU pragma: keep
 #include "game.h"
@@ -21,13 +22,14 @@
 #include "map.h"
 #include "map_iterator.h"
 #include "mapdata.h"
-#include "math_defines.h"
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
 #include "optional.h"
 #include "point.h"
+#include "shadowcasting.h" // IWYU pragma: associated
 #include "string_formatter.h"
+#include "string_id.h"
 #include "submap.h"
 #include "tileray.h"
 #include "type_id.h"
@@ -36,6 +38,7 @@
 #include "vpart_position.h"
 #include "vpart_range.h"
 #include "weather.h"
+#include "weather_type.h"
 
 static const efftype_id effect_haslight( "haslight" );
 static const efftype_id effect_onfire( "onfire" );
@@ -46,7 +49,8 @@ static constexpr int LIGHTMAP_CACHE_Y = MAPSIZE_Y;
 static constexpr point lightmap_boundary_min{};
 static constexpr point lightmap_boundary_max( LIGHTMAP_CACHE_X, LIGHTMAP_CACHE_Y );
 
-const half_open_rectangle lightmap_boundaries( lightmap_boundary_min, lightmap_boundary_max );
+const half_open_rectangle<point> lightmap_boundaries(
+    lightmap_boundary_min, lightmap_boundary_max );
 
 std::string four_quadrants::to_string() const
 {
@@ -59,7 +63,7 @@ void map::add_light_from_items( const tripoint &p, const item_stack::iterator &b
                                 const item_stack::iterator &end )
 {
     for( auto itm_it = begin; itm_it != end; ++itm_it ) {
-        float ilum = 0.0; // brightness
+        float ilum = 0.0f; // brightness
         int iwidth = 0; // 0-360 degrees. 0 is a circular light_source
         int idir = 0;   // otherwise, it's a light_arc pointed in this direction
         if( itm_it->getlight( ilum, iwidth, idir ) ) {
@@ -93,7 +97,12 @@ bool map::build_transparency_cache( const int zlev )
     // Traverse the submaps in order
     for( int smx = 0; smx < my_MAPSIZE; ++smx ) {
         for( int smy = 0; smy < my_MAPSIZE; ++smy ) {
-            const auto cur_submap = get_submap_at_grid( {smx, smy, zlev} );
+            const submap *cur_submap = get_submap_at_grid( {smx, smy, zlev} );
+            if( cur_submap == nullptr ) {
+                debugmsg( "Tried to build transparency cache at (%d,%d,%d) but the submap is not loaded", smx, smy,
+                          zlev );
+                continue;
+            }
 
             float zero_value = LIGHT_TRANSPARENCY_OPEN_AIR;
             for( int sx = 0; sx < SEEX; ++sx ) {
@@ -325,7 +334,11 @@ void map::generate_lightmap( const int zlev )
     // Traverse the submaps in order
     for( int smx = 0; smx < my_MAPSIZE; ++smx ) {
         for( int smy = 0; smy < my_MAPSIZE; ++smy ) {
-            const auto cur_submap = get_submap_at_grid( { smx, smy, zlev } );
+            const submap *cur_submap = get_submap_at_grid( { smx, smy, zlev } );
+            if( cur_submap == nullptr ) {
+                debugmsg( "Tried to generate lightmap at (%d,%d,%d) but the submap is not loaded", smx, smy, zlev );
+                continue;
+            }
 
             for( int sx = 0; sx < SEEX; ++sx ) {
                 for( int sy = 0; sy < SEEY; ++sy ) {
@@ -368,7 +381,7 @@ void map::generate_lightmap( const int zlev )
                         add_light_source( p, furniture->light_emitted );
                     }
 
-                    for( auto &fld : cur_submap->get_field( { sx, sy } ) ) {
+                    for( const auto &fld : cur_submap->get_field( { sx, sy } ) ) {
                         const field_entry *cur = &fld.second;
                         const int light_emitted = cur->light_emitted();
                         if( light_emitted > 0 ) {
@@ -409,20 +422,20 @@ void map::generate_lightmap( const int zlev )
 
         auto lights = v->lights( true );
 
-        float veh_luminance = 0.0;
-        float iteration = 1.0;
+        float veh_luminance = 0.0f;
+        float iteration = 1.0f;
 
-        for( const auto pt : lights ) {
-            const auto &vp = pt->info();
+        for( const vehicle_part *pt : lights ) {
+            const vpart_info &vp = pt->info();
             if( vp.has_flag( VPFLAG_CONE_LIGHT ) ||
                 vp.has_flag( VPFLAG_WIDE_CONE_LIGHT ) ) {
                 veh_luminance += vp.bonus / iteration;
-                iteration = iteration * 1.1;
+                iteration = iteration * 1.1f;
             }
         }
 
-        for( const auto pt : lights ) {
-            const auto &vp = pt->info();
+        for( const vehicle_part *pt : lights ) {
+            const vpart_info &vp = pt->info();
             tripoint src = v->global_part_pos3( *pt );
 
             if( !inbounds( src ) ) {
@@ -1455,7 +1468,7 @@ void map::apply_light_ray( bool lit[LIGHTMAP_CACHE_X][LIGHTMAP_CACHE_Y],
     auto &lm = get_cache( s.z ).lm;
     auto &transparency_cache = get_cache( s.z ).transparency_cache;
 
-    float distance = 1.0;
+    float distance = 1.0f;
     float transparency = LIGHT_TRANSPARENCY_OPEN_AIR;
     const float scaling_factor = static_cast<float>( rl_dist( s, e ) ) /
                                  static_cast<float>( square_dist( s, e ) );

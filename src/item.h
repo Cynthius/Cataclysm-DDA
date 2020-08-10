@@ -23,12 +23,14 @@
 #include "io_tags.h"
 #include "item_contents.h"
 #include "item_location.h"
+#include "item_pocket.h"
 #include "optional.h"
 #include "requirements.h"
 #include "safe_reference.h"
 #include "string_id.h"
 #include "type_id.h"
 #include "units.h"
+#include "units_fwd.h"
 #include "value_ptr.h"
 #include "visitable.h"
 
@@ -36,6 +38,7 @@ class Character;
 class JsonIn;
 class JsonObject;
 class JsonOut;
+class enchantment;
 class faction;
 class gun_type_type;
 class gunmod_location;
@@ -54,6 +57,7 @@ struct mtype;
 struct tripoint;
 template<typename T>
 class ret_val;
+template <typename T> struct enum_traits;
 
 namespace enchant_vals
 {
@@ -753,7 +757,8 @@ class item : public visitable<item>
          * returns this. It's intended to be used like \code newitem = newitem.in_its_container();\endcode
          */
         item in_its_container( int qty = INFINITE_CHARGES ) const;
-        item in_container( const itype_id &container_type, int qty = INFINITE_CHARGES ) const;
+        item in_container( const itype_id &container_type, int qty = INFINITE_CHARGES,
+                           bool sealed = true ) const;
 
         bool item_has_uses_recursive() const;
 
@@ -843,8 +848,14 @@ class item : public visitable<item>
         void set_rot( time_duration val );
 
         /**
-         * Get time left to rot, ignoring fridge.
-         * Returns time to rot if item is able to, max int - N otherwise,
+         * Get minimum time for this item or any of its contents to rot, ignoring
+         * fridge. If this item is a container, its spoil multiplier is taken into
+         * account, but the spoil multiplier of the parent container of this item,
+         * if any, is not.
+         *
+         * If this item does not rot and none of its contents rot either, the function
+         * returns INT_MAX - N,
+         *
          * where N is
          * 3 for food,
          * 2 for medication,
@@ -1144,7 +1155,7 @@ class item : public visitable<item>
          * @param pos The location of the artifact (should be the player location if carried).
          */
         void process_artifact( player *carrier, const tripoint &pos );
-        void process_relic( Character *carrier );
+        void process_relic( Character *carrier, const tripoint &pos );
 
         void overwrite_relic( const relic &nrelic );
 
@@ -1321,6 +1332,12 @@ class item : public visitable<item>
          * vector but will be removed immediately after the function returns
          */
         void on_takeoff( Character &p );
+
+        /**
+         * Calculate (but do not deduct) the number of moves required to wield this weapon
+         */
+        int on_wield_cost( const player &p ) const;
+
         /**
          * Callback when a player starts wielding the item. The item is already in the weapon
          * slot and is called from there.
@@ -1346,6 +1363,9 @@ class item : public visitable<item>
          */
         void on_damage( int qty, damage_type dt );
 
+        bool use_relic( Character &guy, const tripoint &pos );
+        bool has_relic_recharge() const;
+
         /**
          * Name of the item type (not the item), with proper plural.
          * This is only special when the item itself has a special name ("name" entry in
@@ -1365,6 +1385,7 @@ class item : public visitable<item>
          * For items not counted by charges, this returns vol / this->volume().
          */
         int charges_per_volume( const units::volume &vol ) const;
+        int charges_per_weight( const units::mass &m ) const;
 
         /**
          * @name Item variables
@@ -2124,6 +2145,13 @@ class item : public visitable<item>
         // calculates the enchantment value as if this item were wielded.
         double calculate_by_enchantment_wield( double modify, enchant_vals::mod value,
                                                bool round_value = false ) const;
+
+        /**
+         * Compute the number of moves needed to disassemble this item and its components
+         * @param guy The character performing the disassembly
+         * @return The number of moves to recursively disassemble this item
+         */
+        int get_recursive_disassemble_moves( const Character &guy ) const;
 
     private:
         /** migrates an item into this item. */
